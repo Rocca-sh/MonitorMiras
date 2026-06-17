@@ -35,7 +35,7 @@ public class UserAuthServImp implements UserAuthServ {
     @Override
     @Transactional
     public User createUser(User user) {
-        if(getUserByEmail(user.getEmail()) != null){
+        if(userPg.findByEmail(user.getEmail()).isPresent()){
             throw new ExistException("El correo ya esta registrado");
         }
 

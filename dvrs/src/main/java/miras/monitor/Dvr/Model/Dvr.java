@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 import miras.monitor.Org.Model.Org;
 import miras.monitor.User.Model.User;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Table(name = "dvrs")
@@ -25,10 +26,12 @@ public class Dvr {
     @Column(name = "sip_id", length = 30)
     private String sipId;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "org_ulid", nullable = false)
     private Org organization;
 
+    @JsonIgnore
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_ulid")
     private User creator;

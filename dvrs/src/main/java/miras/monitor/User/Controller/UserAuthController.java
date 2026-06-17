@@ -19,6 +19,7 @@ import miras.monitor.Exceptions.UnAuthorized.UnauthorizedException;
 
 @RestController
 @RequestMapping("/auth/users")
+@CrossOrigin(origins = "*")
 public class UserAuthController {
 
     private final UserAuthServ userAuthServ;
@@ -40,7 +41,7 @@ public class UserAuthController {
         return jwtService.createToken(user.getUlid(), orgId, role);
     }
 
-    @PostMapping
+    @PostMapping()
     public ResponseEntity<?> createAccount(@RequestBody UserCreateDto dto) {
         User user = dto.DtoToModel();
         User createdUser = userAuthServ.createUser(user);

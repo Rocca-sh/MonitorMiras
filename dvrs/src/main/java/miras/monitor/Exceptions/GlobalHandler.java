@@ -78,12 +78,12 @@ public class GlobalHandler {
     }
 
         @ExceptionHandler(ExistException.class)
-        public ResponseEntity<ErrorResponse> handleConflict(
+        public ResponseEntity<ErrorResponse> handleExist(
             ExistException ex) {
 
         ErrorResponse error = new ErrorResponse(
                 409,
-                "ALL REDY EXIST",
+                "ALREADY_EXISTS",
                 ex.getMessage()
         );
 
@@ -91,18 +91,19 @@ public class GlobalHandler {
                 .status(HttpStatus.CONFLICT)
                 .body(error);
         }
+
         @ExceptionHandler(UnauthorizedException.class)
-        public ResponseEntity<ErrorResponse> handleConflict(
+        public ResponseEntity<ErrorResponse> handleUnauthorized(
             UnauthorizedException ex) {
 
         ErrorResponse error = new ErrorResponse(
                 401,
-                "UNAUTORIZED",
+                "UNAUTHORIZED",
                 ex.getMessage()
         );
 
         return ResponseEntity
-                .status(HttpStatus.CONFLICT)
+                .status(HttpStatus.UNAUTHORIZED) // Antes decía CONFLICT por error
                 .body(error);
         }
 }

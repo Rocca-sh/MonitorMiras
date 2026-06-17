@@ -10,15 +10,17 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
+
+//TODO
 @RestController
 @RequestMapping("/api/webhook/zlm")
-public class DvrWebhookController {
+public class WebhookController {
 
     private final DvrPg dvrPg;
     private final RedisService redisService;
 
     @Autowired
-    public DvrWebhookController(DvrPg dvrPg, RedisService redisService) {
+    public WebhookController(DvrPg dvrPg, RedisService redisService) {
         this.dvrPg = dvrPg;
         this.redisService = redisService;
     }

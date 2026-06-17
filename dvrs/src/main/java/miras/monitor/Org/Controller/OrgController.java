@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/org")
+@CrossOrigin(origins = "*")
 public class OrgController {
 
     private final OrgServ orgServ;

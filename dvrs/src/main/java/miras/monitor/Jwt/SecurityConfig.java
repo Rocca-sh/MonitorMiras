@@ -22,13 +22,21 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            // Habilitamos CORS globalmente en Security
+            .cors(cors -> cors.configurationSource(request -> {
+                var config = new org.springframework.web.cors.CorsConfiguration();
+                config.setAllowedOrigins(java.util.List.of("*"));
+                config.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+                config.setAllowedHeaders(java.util.List.of("*"));
+                return config;
+            }))
             // Deshabilitamos CSRF porque usaremos JWT (Stateless)
             .csrf(AbstractHttpConfigurer::disable)
             
             // Reglas de autorización
             .authorizeHttpRequests(auth -> auth
-                // Rutas públicas (Auth y Webhooks del Media Server)
-                .requestMatchers("/auth/**", "/api/webhook/**").permitAll()
+                // Rutas públicas (Auth, Org y Webhooks)
+                .requestMatchers("/auth/**", "/api/webhook/**", "/org/**").permitAll()
                 
                 // Rutas protegidas que requieren roles específicos
                 .requestMatchers("/api/dvr/view/**").hasAnyRole("MEMBER", "VIEWER", "OWNER", "ADMIN")
