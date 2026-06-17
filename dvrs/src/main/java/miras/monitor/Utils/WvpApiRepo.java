@@ -43,10 +43,14 @@ public class WvpApiRepo {
         }
     }
 
-    public String getPlayLinks(String sipId) {
+    public String getPlayLinks(String deviceId, String channelId) {
         try {
-            // Solicitamos los links. Por defecto channelId es igual al deviceId si no lo especificas diferente
-            String url = wvpBaseUrl + "/api/play/start/" + sipId + "/" + sipId + "?setup=TCP";
+            String cleanDeviceId = deviceId != null ? deviceId.trim() : "";
+            String cleanChannelId = channelId != null ? channelId.trim() : "";
+            String actualChannelId = (!cleanChannelId.isEmpty()) ? cleanChannelId : cleanDeviceId;
+            
+            // Solicitamos los links. Usamos el deviceId y el channelId correcto
+            String url = wvpBaseUrl + "/api/play/start/" + cleanDeviceId + "/" + actualChannelId + "?setup=TCP";
             
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))

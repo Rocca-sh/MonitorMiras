@@ -59,9 +59,9 @@ public class DvrController {
 
     // Retorna un String porque Spring convertirá automáticamente a JSON el texto crudo si configuramos los headers
     @GetMapping(value = "/play/{sipId}", produces = "application/json")
-    public ResponseEntity<?> viewStream(@PathVariable String sipId, @AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = false) String channelId, @AuthenticationPrincipal UserPrincipal principal) {
         // En una app final aquí verificaríamos que el sipId pertenece al orgId del token
-        String jsonResult = wvpApiServ.getStreamLinks(sipId);
+        String jsonResult = wvpApiServ.getStreamLinks(sipId, channelId);
         return ResponseEntity.ok(jsonResult);
     }
 

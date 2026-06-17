@@ -11,7 +11,7 @@ public class WvpApiServ {
         this.wvpApiRepo = wvpApiRepo;
     }
 
-    public String getStreamLinks(String sipId) {
-        return wvpApiRepo.getPlayLinks(sipId);
+    public String getStreamLinks(String deviceId, String channelId) {
+        return wvpApiRepo.getPlayLinks(deviceId, channelId);
     }
 }
