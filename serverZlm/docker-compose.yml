@@ -1,0 +1,46 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: miras_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: miras_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: miras_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zlmediakit:
+    image: zlmediakit/zlmediakit:master
+    container_name: miras_zlm
+    restart: unless-stopped
+    network_mode: host # Necesario para abrir puertos RTP dinámicos al vuelo
+    volumes:
+      - ./zlm/config.ini:/opt/media/conf/config.ini:ro
+    # NOTA: Al usar network_mode: host, ZLM toma los puertos directamente de la máquina física
+    # (Por defecto tomará el 80 para HTTP, 554 para RTSP, etc).
+
+volumes:
+  redis_data:
+  postgres_data:

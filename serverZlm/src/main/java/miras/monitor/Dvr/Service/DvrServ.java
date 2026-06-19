@@ -9,4 +9,5 @@ public interface DvrServ {
     void removeDevice(String ulid, String orgUlid);
     List<Dvr> listDevices(String orgUlid);
     String getDvrChannels(String sipId, String orgUlid);
+    List<String> playVideo(String dvrSipId, String channelSipId, String orgUlid);
 }

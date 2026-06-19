@@ -6,15 +6,17 @@ import miras.monitor.Dvr.Service.DvrServ;
 import miras.monitor.User.Model.UserPrincipal;
 import miras.monitor.Utils.RedisDvrService;
 import miras.monitor.Utils.WvpApiServ;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/dvr")
-@CrossOrigin(origins = "*")
 public class DvrController {
 
     private final DvrServ dvrServ;
@@ -57,12 +59,10 @@ public class DvrController {
         return ResponseEntity.ok().build();
     }
 
-    // Retorna un String porque Spring convertirá automáticamente a JSON el texto crudo si configuramos los headers
-    @GetMapping(value = "/play/{sipId}", produces = "application/json")
-    public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = false) String channelId, @AuthenticationPrincipal UserPrincipal principal) {
-        // En una app final aquí verificaríamos que el sipId pertenece al orgId del token
-        String jsonResult = wvpApiServ.getStreamLinks(sipId, channelId);
-        return ResponseEntity.ok(jsonResult);
+    @GetMapping(value = "/play/{sipId}")
+    public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = true) String channelId, @AuthenticationPrincipal UserPrincipal principal) {
+        List<String> links = dvrServ.playVideo(sipId, channelId, principal.getOrgId());
+        return ResponseEntity.ok(links);
     }
 
     @GetMapping("/list")

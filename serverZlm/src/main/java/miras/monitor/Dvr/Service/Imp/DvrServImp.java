@@ -16,6 +16,8 @@ import java.util.List;
 import miras.monitor.Utils.RedisDvrService;
 import miras.monitor.Utils.WvpApiServ;
 import miras.monitor.Exceptions.BadRequest.BadRequestException;
+import miras.monitor.Zlmedia.Repo.ZlmVideoRepo;
+import miras.monitor.lib.SipCreator;
 
 
 @Service
@@ -26,14 +28,16 @@ public class DvrServImp implements DvrServ {
     private final UserPg userPg;
     private final RedisDvrService redisDvrService;
     private final WvpApiServ wvpApiServ;
+    private final ZlmVideoRepo zlmVideoRepo;
 
     @Autowired
-    public DvrServImp(DvrPg dvrPg, OrgPg orgPg, UserPg userPg, RedisDvrService redisDvrService, WvpApiServ wvpApiServ) {
+    public DvrServImp(DvrPg dvrPg, OrgPg orgPg, UserPg userPg, RedisDvrService redisDvrService, WvpApiServ wvpApiServ, ZlmVideoRepo zlmVideoRepo) {
         this.dvrPg = dvrPg;
         this.orgPg = orgPg;
         this.userPg = userPg;
         this.redisDvrService = redisDvrService;
         this.wvpApiServ = wvpApiServ;
+        this.zlmVideoRepo = zlmVideoRepo;
     }
 
     private Org getOrg(String orgUlid) {
@@ -102,5 +106,30 @@ public class DvrServImp implements DvrServ {
         }
         
         return wvpApiServ.getDeviceChannels(sipId);
+    }
+
+    @Override
+    public List<String> playVideo(String dvrSipId, String channelSipId, String orgUlid) {
+        /*  1. Validar que el OrgID corresponda a los primeros 10 dígitos del DVR
+        //String extractedOrg = SipCreator.getOrgIdFromSip(dvrSipId);
+        //if (extractedOrg == null || !extractedOrg.equals(orgUlid)) {
+        //    throw new UnauthorizedException("No tienes permiso sobre este DVR");
+        //}
+        */
+
+        String dvrAddress = redisDvrService.getDvrAddress(dvrSipId);
+        if (dvrAddress == null){
+            throw new BadRequestException("El DVR no se encuentra online");
+        }
+
+        String[] parts = dvrAddress.split(":");
+        String ip = parts[0];
+        int port = Integer.parseInt(parts[1]);
+
+        // Si no mandan canal, asumimos que es el SIP del DVR base
+        String targetChannel = (channelSipId != null && !channelSipId.isEmpty()) ? channelSipId : dvrSipId;
+
+        // 4. Mandar pedir los links al Repo de ZLM
+        return zlmVideoRepo.getPlaybackLinks(targetChannel, ip, port);
     }
 }
