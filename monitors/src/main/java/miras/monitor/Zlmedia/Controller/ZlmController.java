@@ -1,6 +1,12 @@
 package miras.monitor.Zlmedia.Controller;
 
 import javax.sip.DialogTerminatedEvent;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.HashMap;
 import javax.sip.IOExceptionEvent;
 import javax.sip.RequestEvent;
 import javax.sip.ResponseEvent;
@@ -23,14 +29,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import miras.monitor.Utils.RedisDvrService;
+import miras.monitor.Exceptions.Conflict.DvrRejectedException;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 @Component
 public class ZlmController implements SipListener {
 
     public static final Map<String, javax.sip.Dialog> activeDialogs = new ConcurrentHashMap<>();
+    public static final Map<String, Boolean> pendingStreams = new ConcurrentHashMap<>();
+    public static final java.util.Set<String> stoppedStreams = ConcurrentHashMap.newKeySet();
+    public static final Map<String, CompletableFuture<Void>> pendingFutures = new ConcurrentHashMap<>();
 
     @Autowired
     private RedisDvrService redisDvrService;
@@ -128,7 +139,61 @@ public class ZlmController implements SipListener {
                 } 
                 else if (xmlString.contains("<CmdType>Catalog</CmdType>")) {
                     System.out.println("====== CATÁLOGO RECIBIDO DEL DVR " + sipId + " ======");
-                    
+                    // System.out.println(xmlString); // Imprimir el XML crudo para depurar
+                    try {
+                        List<Map<String, String>> channels = new ArrayList<>();
+                        Pattern itemPattern = Pattern.compile("<Item>(.*?)</Item>", Pattern.DOTALL);
+                        Matcher itemMatcher = itemPattern.matcher(xmlString);
+                        
+                        while (itemMatcher.find()) {
+                            String itemXml = itemMatcher.group(1);
+                            
+                            Pattern idPattern = Pattern.compile("<DeviceID>(.*?)</DeviceID>");
+                            Matcher idMatcher = idPattern.matcher(itemXml);
+                            String deviceId = idMatcher.find() ? idMatcher.group(1).trim() : "";
+                            
+                            Pattern namePattern = Pattern.compile("<Name>(.*?)</Name>");
+                            Matcher nameMatcher = namePattern.matcher(itemXml);
+                            
+                            Pattern statusPattern = Pattern.compile("<Status>(.*?)</Status>");
+                            Matcher statusMatcher = statusPattern.matcher(itemXml);
+                            String name = nameMatcher.find() ? nameMatcher.group(1).trim() : "Desconocido";
+                            String status = statusMatcher.find() ? statusMatcher.group(1).trim() : "OFF";
+                            
+                            if (!deviceId.isEmpty() && !deviceId.equals(sipId)) {
+                                if (deviceId.length() < 20 && sipId.length() == 20) {
+                                    try {
+                                        String base = sipId.substring(0, 10);
+                                        deviceId = base + "131" + "0" + String.format("%06d", Integer.parseInt(deviceId) + 1);
+                                        System.out.println("ID reconstruido: " + deviceId);
+                                    } catch (NumberFormatException e) {
+                                        // Ignore parsing error, keep original ID
+                                    }
+                                }
+
+                                Map<String, String> ch = new HashMap<>();
+                                ch.put("id", deviceId);
+                                ch.put("name", name);
+                                ch.put("status", status);
+                                channels.add(ch);
+                            }
+                        }
+                        
+                        ObjectMapper mapper = new ObjectMapper();
+                        String existingJson = redisDvrService.getChannels(sipId);
+                        if (existingJson != null) {
+                            List<Map<String, String>> existing = mapper.readValue(existingJson, new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, String>>>(){});
+                            existing.addAll(channels);
+                            channels = existing;
+                        }
+                        
+                        String jsonChannels = mapper.writeValueAsString(channels);
+                        redisDvrService.saveChannels(sipId, jsonChannels);
+                        System.out.println("Canales guardados: " + channels.size());
+                        
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             }
 
@@ -143,20 +208,49 @@ public class ZlmController implements SipListener {
             Response response = responseEvent.getResponse();
             CSeqHeader cseq = (CSeqHeader) response.getHeader(CSeqHeader.NAME);
             
-            // Si el DVR contestó 200 OK a nuestro INVITE
-            if (response.getStatusCode() == Response.OK && cseq.getMethod().equals(Request.INVITE)) {
-                javax.sip.Dialog dialog = responseEvent.getDialog();
-                if (dialog != null) {
-                    // Hay que mandarle un ACK para confirmar que recibimos el OK, 
-                    // si no el DVR asume error y no manda el video
-                    Request ackRequest = dialog.createAck(cseq.getSeqNumber());
-                    dialog.sendAck(ackRequest);
-                    System.out.println("===== ACK ENVIADO AL DVR =====");
-                    
-                    // Extraer el canal SIP para guardar la conexión (Dialog) y poder mandarle BYE después
-                    javax.sip.header.ToHeader toHeader = (javax.sip.header.ToHeader) response.getHeader(javax.sip.header.ToHeader.NAME);
-                    String channelSipId = ((SipURI) toHeader.getAddress().getURI()).getUser();
-                    activeDialogs.put(channelSipId, dialog);
+            if (cseq.getMethod().equals(Request.INVITE)) {
+                javax.sip.header.ToHeader toHeader = (javax.sip.header.ToHeader) response.getHeader(javax.sip.header.ToHeader.NAME);
+                String channelSipId = ((SipURI) toHeader.getAddress().getURI()).getUser();
+
+                if (response.getStatusCode() == Response.OK) {
+                    javax.sip.Dialog dialog = responseEvent.getDialog();
+                    if (dialog != null) {
+                        Request ackRequest = dialog.createAck(cseq.getSeqNumber());
+                        dialog.sendAck(ackRequest);
+                        System.out.println("===== ACK ENVIADO AL DVR =====");
+                        
+                        pendingStreams.remove(channelSipId);
+                        
+                        if (stoppedStreams.contains(channelSipId)) {
+                            stoppedStreams.remove(channelSipId);
+                            
+                            SipProvider provider = (SipProvider) responseEvent.getSource();
+                            Request byeRequest = dialog.createRequest(Request.BYE);
+                            javax.sip.ClientTransaction ct = provider.getNewClientTransaction(byeRequest);
+                            dialog.sendRequest(ct);
+                            System.out.println("===== BYE ENVIADO INMEDIATAMENTE AL DVR (Cancelación Rápida) =====");
+                            
+                            CompletableFuture<Void> cancelledFuture = pendingFutures.remove(channelSipId);
+                            if (cancelledFuture != null) {
+                                cancelledFuture.completeExceptionally(
+                                    new IllegalStateException("Stream cancelado antes de confirmar (" + channelSipId + ")"));
+                            }
+                        } else {
+                            activeDialogs.put(channelSipId, dialog);
+                            
+                            CompletableFuture<Void> future = pendingFutures.remove(channelSipId);
+                            if (future != null) {
+                                future.complete(null);
+                            }
+                        }
+                    }
+                } else if (response.getStatusCode() > 200) {
+                    System.err.println("===== EL DVR RECHAZÓ EL INVITE PARA " + channelSipId + " CON CÓDIGO: " + response.getStatusCode() + " =====");
+                    pendingStreams.remove(channelSipId);
+                    CompletableFuture<Void> future = pendingFutures.remove(channelSipId);
+                    if (future != null) {
+                        future.completeExceptionally(new DvrRejectedException("El DVR rechazó la conexión o la cámara está ocupada. Código SIP: " + response.getStatusCode()));
+                    }
                 }
             }
         } catch (Exception e) {

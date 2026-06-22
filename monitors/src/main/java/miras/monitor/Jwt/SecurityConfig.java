@@ -38,7 +38,7 @@ public class SecurityConfig {
             // Reglas de autorización
             .authorizeHttpRequests(auth -> auth
                 // Rutas públicas (Auth, Org y Webhooks)
-                .requestMatchers("/auth/**", "/api/webhook/**", "/org/**").permitAll()
+                .requestMatchers("/auth/**", "/api/webhook/**", "/api/hook/**", "/org/**").permitAll()
                 
                 // Rutas protegidas que requieren roles específicos
                 .requestMatchers("/api/dvr/view/**").hasAnyRole("MEMBER", "VIEWER", "OWNER", "ADMIN")

@@ -1,6 +1,9 @@
 package miras.monitor.Zlmedia.Repo;
 
 import miras.monitor.Exceptions.Conflict.ConflictException;
+import miras.monitor.Exceptions.Conflict.DvrRejectedException;
+import miras.monitor.Exceptions.Timeout.DvrTimeoutException;
+import miras.monitor.Utils.RedisDvrService;
 import miras.monitor.Zlmedia.Config.SipConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +30,9 @@ public class ZlmVideoRepo {
 
     @Autowired
     private SipConfig sipConfig;
+
+    @Autowired
+    private RedisDvrService redisDvrService;
 
     @Value("${zlm.api.url:http://127.0.0.1:80}")
     private String zlmApiUrl;
@@ -82,31 +88,157 @@ public class ZlmVideoRepo {
         return -1;
     }
 
-    public Map<String, String> getPlaybackLinks(String channelSipId, String dvrIp, int dvrPort) {
-        int zlmPort = openRtpServer(channelSipId);
-        
-        if (zlmPort == -1) {
-            throw new ConflictException("No se pudo abrir puerto en ZLMediaKit");
+    public Map<String, String> getPlaybackLinks(String channelSipId, String dvrIp, int dvrPort, int quality) {
+
+        if (miras.monitor.Zlmedia.Controller.ZlmController.activeDialogs.containsKey(channelSipId)) {
+            System.out.println("El stream " + channelSipId + " ya está activo. Reutilizando flujo existente...");
+            return generatePlaybackLinks(channelSipId);
         }
 
-        // Armar el SDP
-        String sdpData = 
-                "v=0\r\n" +
-                "o=" + SERVER_SIP_ID + " 0 0 IN IP4 " + sipLocalIp + "\r\n" +
-                "s=Play\r\n" +
-                "c=IN IP4 " + sipLocalIp + "\r\n" +
-                "t=0 0\r\n" +
-                "m=video " + zlmPort + " RTP/AVP 96\r\n" +
-                "a=recvonly\r\n" +
-                "a=rtpmap:96 PS/90000\r\n" +
-                "y=0100000001\r\n";
+        Boolean alreadyPending = miras.monitor.Zlmedia.Controller.ZlmController.pendingStreams.putIfAbsent(channelSipId, Boolean.TRUE);
+        if (alreadyPending != null) {
+            System.out.println("El stream " + channelSipId + " ya está siendo solicitado. Esperando resultado...");
+            return waitForExistingRequest(channelSipId);
+        }
 
-        sendInviteToDvr(channelSipId, dvrIp, dvrPort, sdpData);
+        miras.monitor.Zlmedia.Controller.ZlmController.stoppedStreams.remove(channelSipId);
 
-        return generatePlaybackLinks(channelSipId);
+        try {
+            int zlmPort = openRtpServer(channelSipId);
+            if (zlmPort == -1) {
+                throw new ConflictException("No se pudo abrir puerto en ZLMediaKit");
+            }
+
+            String sdpData = 
+                    "v=0\r\n" +
+                    "o=" + SERVER_SIP_ID + " 0 0 IN IP4 " + sipLocalIp + "\r\n" +
+                    "s=Play\r\n" +
+                    "c=IN IP4 " + sipLocalIp + "\r\n" +
+                    "t=0 0\r\n" +
+                    "m=video " + zlmPort + " RTP/AVP 96\r\n" +
+                    "a=recvonly\r\n" +
+                    "a=rtpmap:96 PS/90000\r\n" +
+                    "y=0100000001\r\n";
+
+            java.util.concurrent.CompletableFuture<Void> future = new java.util.concurrent.CompletableFuture<>();
+            miras.monitor.Zlmedia.Controller.ZlmController.pendingFutures.put(channelSipId, future);
+
+            sendInviteToDvr(channelSipId, dvrIp, dvrPort, sdpData, quality);
+
+            try {
+                future.get(10, java.util.concurrent.TimeUnit.SECONDS);
+                return generatePlaybackLinks(channelSipId);
+            } catch (java.util.concurrent.TimeoutException | InterruptedException | java.util.concurrent.ExecutionException e) {
+                cleanupFailedStream(channelSipId);
+                if (e instanceof java.util.concurrent.ExecutionException && e.getCause() instanceof DvrRejectedException) {
+                    throw (DvrRejectedException) e.getCause();
+                }
+                throw new DvrTimeoutException(
+                    "El dispositivo o cámara (" + channelSipId + ") no contestó en 10 segundos. Puede estar apagada o fuera de línea.");
+            }
+        } finally {
+            miras.monitor.Zlmedia.Controller.ZlmController.pendingStreams.remove(channelSipId);
+            miras.monitor.Zlmedia.Controller.ZlmController.pendingFutures.remove(channelSipId);
+        }
     }
 
-    private void sendInviteToDvr(String channelSipId, String dvrIp, int dvrPort, String sdpData) {
+    private Map<String, String> waitForExistingRequest(String channelSipId) {
+        java.util.concurrent.CompletableFuture<Void> existingFuture = miras.monitor.Zlmedia.Controller.ZlmController.pendingFutures.get(channelSipId);
+
+        if (existingFuture == null) {
+            if (miras.monitor.Zlmedia.Controller.ZlmController.activeDialogs.containsKey(channelSipId)) {
+                return generatePlaybackLinks(channelSipId);
+            }
+            throw new miras.monitor.Exceptions.Timeout.DvrTimeoutException(
+                "El canal (" + channelSipId + ") no está disponible en este momento.");
+        }
+
+        try {
+            existingFuture.get(10, java.util.concurrent.TimeUnit.SECONDS);
+            return generatePlaybackLinks(channelSipId);
+        } catch (java.util.concurrent.TimeoutException | InterruptedException | java.util.concurrent.ExecutionException e) {
+            if (e instanceof java.util.concurrent.ExecutionException && e.getCause() instanceof DvrRejectedException) {
+                throw (DvrRejectedException) e.getCause();
+            }
+            throw new DvrTimeoutException(
+                "El dispositivo o cámara (" + channelSipId + ") no contestó en 10 segundos. Puede estar apagada o fuera de línea.");
+        }
+    }
+
+    private void cleanupFailedStream(String channelSipId) {
+        miras.monitor.Zlmedia.Controller.ZlmController.stoppedStreams.add(channelSipId);
+        try {
+            String closeUrl = String.format("%s/index/api/closeRtpServer?secret=%s&stream_id=%s", zlmApiUrl, zlmSecret, channelSipId);
+            restTemplate.getForEntity(closeUrl, Map.class);
+        } catch (Exception e) {
+            System.out.println("No se pudo cerrar el puerto RTP en ZLMediaKit para el canal " + channelSipId + ": " + e.getMessage());
+        }
+    }
+
+    public String getCatalogWithTimeout(String dvrSipId, String dvrIp, int dvrPort) {
+        try {
+            SipProvider sipProvider = sipConfig.getSipProviderUdp();
+            SipFactory sipFactory = SipFactory.getInstance();
+            AddressFactory addressFactory = sipFactory.createAddressFactory();
+            HeaderFactory headerFactory = sipFactory.createHeaderFactory();
+            MessageFactory messageFactory = sipFactory.createMessageFactory();
+
+            String xmlContent = "<?xml version=\"1.0\" encoding=\"GB2312\"?>\r\n" +
+                                "<Query>\r\n" +
+                                "<CmdType>Catalog</CmdType>\r\n" +
+                                "<SN>" + (int)(Math.random() * 1000) + "</SN>\r\n" +
+                                "<DeviceID>" + dvrSipId + "</DeviceID>\r\n" +
+                                "</Query>\r\n";
+            
+            SipURI toUri = addressFactory.createSipURI(dvrSipId, dvrIp);
+            toUri.setPort(dvrPort);
+            javax.sip.address.Address toAddress = addressFactory.createAddress(toUri);
+            javax.sip.header.ToHeader toHeader = headerFactory.createToHeader(toAddress, null);
+
+            SipURI fromUri = addressFactory.createSipURI(SERVER_SIP_ID, sipLocalIp);
+            fromUri.setPort(5060);
+            javax.sip.address.Address fromAddress = addressFactory.createAddress(fromUri);
+            javax.sip.header.FromHeader fromHeader = headerFactory.createFromHeader(fromAddress, "catalog" + System.currentTimeMillis());
+
+            javax.sip.header.CallIdHeader callIdHeader = sipProvider.getNewCallId();
+            javax.sip.header.CSeqHeader cSeqHeader = headerFactory.createCSeqHeader(1L, javax.sip.message.Request.MESSAGE);
+
+            javax.sip.header.MaxForwardsHeader maxForwards = headerFactory.createMaxForwardsHeader(70);
+
+            javax.sip.message.Request request = messageFactory.createRequest(
+                    toUri, javax.sip.message.Request.MESSAGE, callIdHeader, cSeqHeader, fromHeader,
+                    toHeader, java.util.Collections.singletonList(headerFactory.createViaHeader(sipLocalIp, 5060, "udp", null)),
+                    maxForwards);
+
+            javax.sip.header.ContentTypeHeader contentTypeHeader = headerFactory.createContentTypeHeader("Application", "MANSCDP+xml");
+            request.setContent(xmlContent, contentTypeHeader);
+
+            sipProvider.sendRequest(request);
+            System.out.println("===== PETICIÓN DE CATÁLOGO ENVIADA AL DVR " + dvrSipId + " =====");
+
+            // Esperamos hasta 5 segundos a que el DVR responda el catálogo y ZlmController lo guarde
+            int waitTime = 0;
+            while (waitTime < 5000) {
+                String channels = redisDvrService.getChannels(dvrSipId);
+                if (channels != null) {
+                    try { Thread.sleep(1000); } catch (Exception e) {} // Dar tiempo a que lleguen y se procesen los demás paquetes UDP
+                    return redisDvrService.getChannels(dvrSipId);
+                }
+                try { Thread.sleep(200); } catch (Exception e) {}
+                waitTime += 200;
+            }
+
+            redisDvrService.setDvrOffline(dvrSipId);
+            throw new DvrTimeoutException("El dispositivo (" + dvrSipId + ") no respondió al catálogo. Puede estar apagado o fuera de línea.");
+        } catch (DvrTimeoutException e) {
+            throw e;
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new RuntimeException("Error al solicitar el catálogo al DVR", e);
+        }
+    }
+
+    private void sendInviteToDvr(String channelSipId, String dvrIp, int dvrPort, String sdpData, int quality) {
         try {
             SipProvider sipProvider = sipConfig.getSipProviderUdp();
             SipFactory sipFactory = SipFactory.getInstance();
@@ -149,7 +281,7 @@ public class ZlmVideoRepo {
             ContactHeader contactHeader = headerFactory.createContactHeader(contactAddress);
             request.addHeader(contactHeader);
 
-            SubjectHeader subjectHeader = headerFactory.createSubjectHeader(channelSipId + ":0," + SERVER_SIP_ID + ":0");
+            SubjectHeader subjectHeader = headerFactory.createSubjectHeader(channelSipId + ":" + quality + "," + SERVER_SIP_ID + ":0");
             request.addHeader(subjectHeader);
 
             ContentTypeHeader contentTypeHeader = headerFactory.createContentTypeHeader("application", "sdp");
@@ -185,29 +317,6 @@ public class ZlmVideoRepo {
     }
 
     public void stopStream(String streamId) {
-        try {
-            // 1. Cerrar puerto en ZLM (Forzar corte de recepción RTP)
-            String closeUrl = String.format("%s/index/api/closeRtpServer?secret=%s&stream_id=%s", zlmApiUrl, zlmSecret, streamId);
-            restTemplate.getForEntity(closeUrl, Map.class);
-            System.out.println("ZLM cerró puerto RTP para " + streamId);
-        } catch (Exception e) {
-            System.err.println("Error al cerrar puerto RTP en ZLM: " + e.getMessage());
-        }
-
-        // 2. Mandar mensaje BYE a la cámara (Dialog SIP)
-        javax.sip.Dialog dialog = miras.monitor.Zlmedia.Controller.ZlmController.activeDialogs.remove(streamId);
-        if (dialog != null) {
-            try {
-                Request byeRequest = dialog.createRequest(Request.BYE);
-                SipProvider sipProvider = sipConfig.getSipProviderUdp();
-                ClientTransaction ct = sipProvider.getNewClientTransaction(byeRequest);
-                dialog.sendRequest(ct);
-                System.out.println("===== BYE MANUAL ENVIADO AL DVR (Cortando flujo) =====");
-            } catch (Exception e) {
-                System.err.println("Error al enviar el BYE al DVR: " + e.getMessage());
-            }
-        } else {
-            System.out.println("No se encontró sesión SIP activa para " + streamId + " (quizás ya se cerró)");
-        }
+        System.out.println("Solicitud de stopStream ignorada para " + streamId + ". ZLM se encargará de cerrar el stream automáticamente cuando no haya espectadores (webhook on_stream_none_reader).");
     }
 }

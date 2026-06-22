@@ -1,7 +1,6 @@
 package miras.monitor.Dvr.Controller;
 
 import miras.monitor.Dvr.Controller.Dto.DvrCreateDto;
-import miras.monitor.Dvr.Controller.Dto.PlayBatchDto;
 import miras.monitor.Dvr.Model.Dvr;
 import miras.monitor.Dvr.Service.DvrServ;
 import miras.monitor.User.Model.UserPrincipal;
@@ -45,15 +44,11 @@ public class DvrController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/play/batch")
-    public ResponseEntity<?> playBatch(@RequestBody PlayBatchDto dto, @AuthenticationPrincipal UserPrincipal principal) {
-        Map<String, Map<String, String>> links = dvrServ.playVideoBatch(dto.getDvrSipId(), dto.getChannelIds(), principal.getOrgId());
-        return ResponseEntity.ok(links);
-    }
+
 
     @GetMapping(value = "/play/{sipId}")
-    public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = true) String channelId, @AuthenticationPrincipal UserPrincipal principal) {
-        Map<String, String> links = dvrServ.playVideo(sipId, channelId, principal.getOrgId());
+    public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = true) String channelId, @RequestParam(defaultValue = "0") int quality, @AuthenticationPrincipal UserPrincipal principal) {
+        Map<String, String> links = dvrServ.playVideo(sipId, channelId, principal.getOrgId(), quality);
         return ResponseEntity.ok(links);
     }
 
@@ -68,7 +63,7 @@ public class DvrController {
         return ResponseEntity.ok(dvrServ.listDevices(principal.getOrgId()));
     }
     
-    @GetMapping("/channels/{sipId}")
+    @GetMapping(value = "/channels/{sipId}", produces = "application/json")
     public ResponseEntity<?> getChannels(@PathVariable String sipId, @AuthenticationPrincipal UserPrincipal principal) {
         String jsonResult = dvrServ.getDvrChannels(sipId, principal.getOrgId());
         return ResponseEntity.ok(jsonResult);

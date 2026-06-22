@@ -10,9 +10,10 @@ import miras.monitor.Exceptions.BadRequest.BadRequestException;
 import miras.monitor.Exceptions.NotFound.NotFoundException;
 import miras.monitor.Exceptions.UnAuthorized.UnauthorizedException;
 import miras.monitor.Exceptions.Conflict.ConflictException;
+import miras.monitor.Exceptions.Conflict.DvrRejectedException;
 import miras.monitor.Exceptions.Exist.ExistException;
 import miras.monitor.Exceptions.Forbidden.ForbiddenException;
-
+import miras.monitor.Exceptions.Timeout.DvrTimeoutException;
 
 @RestControllerAdvice
 public class GlobalHandler {
@@ -106,4 +107,34 @@ public class GlobalHandler {
                 .status(HttpStatus.UNAUTHORIZED) // Antes decía CONFLICT por error
                 .body(error);
         }
+
+        @ExceptionHandler(DvrRejectedException.class)
+        public ResponseEntity<ErrorResponse> handleDvrRejected(
+                DvrRejectedException ex) {
+
+        ErrorResponse error = new ErrorResponse(
+                503,
+                "DVR_REJECTED",
+                ex.getMessage()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(error);
+        }
+
+    @ExceptionHandler(DvrTimeoutException.class)
+    public ResponseEntity<ErrorResponse> handleDvrTimeout(
+            DvrTimeoutException ex) {
+
+        ErrorResponse error = new ErrorResponse(
+                504,
+                "GATEWAY_TIMEOUT",
+                ex.getMessage()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(error);
+    }
 }

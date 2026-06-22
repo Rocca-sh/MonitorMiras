@@ -9,8 +9,8 @@ public interface DvrServ {
     Dvr updateSettings(String ulid, Dvr updatedData, String orgUlid);
     void removeDevice(String ulid, String orgUlid);
     String getDvrChannels(String sipId, String orgUlid);
-    Map<String, String> playVideo(String dvrSipId, String channelSipId, String orgUlid);
-    Map<String, Map<String, String>> playVideoBatch(String dvrSipId, List<String> channelIds, String orgUlid);
+    Map<String, String> playVideo(String dvrSipId, String channelSipId, String orgUlid, int quality);
+
     void stopVideo(String channelSipId, String orgUlid);
     List<Map<String, Object>> listDevices(String orgSipId);
 }

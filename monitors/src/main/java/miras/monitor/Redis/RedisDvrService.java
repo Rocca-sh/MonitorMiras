@@ -45,4 +45,21 @@ public class RedisDvrService {
     public boolean checkAndSyncDvrStatus(String sipId, String orgId) {
         return redisTemplate.hasKey("dvr:" + sipId);
     }
+
+    public void saveChannels(String sipId, String jsonChannels) {
+        String key = "dvr_channels:" + sipId;
+        redisTemplate.opsForValue().set(key, jsonChannels, 3, TimeUnit.MINUTES);
+    }
+
+    public String getChannels(String sipId) {
+        return redisTemplate.opsForValue().get("dvr_channels:" + sipId);
+    }
+
+    public void deleteChannels(String sipId) {
+        redisTemplate.delete("dvr_channels:" + sipId);
+    }
+
+    public void setDvrOffline(String sipId) {
+        redisTemplate.delete("dvr:" + sipId);
+    }
 }

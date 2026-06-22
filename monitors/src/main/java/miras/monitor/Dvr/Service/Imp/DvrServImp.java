@@ -17,9 +17,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.ArrayList;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import miras.monitor.Utils.RedisDvrService;
 
 import miras.monitor.Exceptions.BadRequest.BadRequestException;
@@ -105,12 +102,16 @@ public class DvrServImp implements DvrServ {
             throw new BadRequestException("El DVR no se encuentra online");
         }
         
-        // TODO: Implementar lógica nativa para obtener catálogo de canales del DVR mediante SIP
-        return "[]";
+        // FORZAR LA ACTUALIZACIÓN: Borramos la caché actual para que espere al nuevo catálogo
+        redisDvrService.deleteChannels(sipId);
+
+        String dvrAddress = redisDvrService.getDvrAddress(sipId);
+        String[] parts = dvrAddress.split(":");
+        return zlmVideoRepo.getCatalogWithTimeout(sipId, parts[0], Integer.parseInt(parts[1]));
     }
 
     @Override
-    public Map<String, String> playVideo(String dvrSipId, String channelSipId, String orgUlid) {
+    public Map<String, String> playVideo(String dvrSipId, String channelSipId, String orgUlid, int quality) {
         /*  1. Validar que el OrgID corresponda a los primeros 10 dígitos del DVR
         //String extractedOrg = SipCreator.getOrgIdFromSip(dvrSipId);
         //if (extractedOrg == null || !extractedOrg.equals(orgUlid)) {
@@ -131,37 +132,10 @@ public class DvrServImp implements DvrServ {
         String targetChannel = (channelSipId != null && !channelSipId.isEmpty()) ? channelSipId : dvrSipId;
 
         // 4. Mandar pedir los links al Repo de ZLM
-        return zlmVideoRepo.getPlaybackLinks(targetChannel, ip, port);
+        return zlmVideoRepo.getPlaybackLinks(targetChannel, ip, port, quality);
     }
 
-    @Override
-    public Map<String, Map<String, String>> playVideoBatch(String dvrSipId, List<String> channelIds, String orgUlid) {
-        String dvrAddress = redisDvrService.getDvrAddress(dvrSipId);
-        if (dvrAddress == null){
-            throw new BadRequestException("El DVR no se encuentra online");
-        }
 
-        String[] parts = dvrAddress.split(":");
-        String ip = parts[0];
-        int port = Integer.parseInt(parts[1]);
-
-        Map<String, Map<String, String>> result = new ConcurrentHashMap<>();
-
-        List<CompletableFuture<Void>> futures = channelIds.stream()
-            .map(channelId -> CompletableFuture.runAsync(() -> {
-                try {
-                    Map<String, String> links = zlmVideoRepo.getPlaybackLinks(channelId, ip, port);
-                    result.put(channelId, links);
-                } catch (Exception e) {
-                    System.err.println("Error procesando canal " + channelId + ": " + e.getMessage());
-                }
-            }))
-            .collect(Collectors.toList());
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-        return result;
-    }
 
     @Override
     public void stopVideo(String channelSipId, String orgUlid) {
