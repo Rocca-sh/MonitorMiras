@@ -9,6 +9,8 @@ import miras.monitor.Exceptions.NotFound.NotFoundException;
 import miras.monitor.Exceptions.UnAuthorized.UnauthorizedException;
 import miras.monitor.User.Model.Repo.UserPg;
 import miras.monitor.User.Model.User;
+import miras.monitor.Exceptions.Exist.ExistException;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,6 +18,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import javax.imageio.plugins.tiff.ExifGPSTagSet;
+
 import java.util.ArrayList;
 import miras.monitor.Utils.RedisDvrService;
 
@@ -102,7 +107,6 @@ public class DvrServImp implements DvrServ {
             throw new BadRequestException("El DVR no se encuentra online");
         }
         
-        // FORZAR LA ACTUALIZACIÓN: Borramos la caché actual para que espere al nuevo catálogo
         redisDvrService.deleteChannels(sipId);
 
         String dvrAddress = redisDvrService.getDvrAddress(sipId);
@@ -112,27 +116,24 @@ public class DvrServImp implements DvrServ {
 
     @Override
     public Map<String, String> playVideo(String dvrSipId, String channelSipId, String orgUlid, int quality) {
-        /*  1. Validar que el OrgID corresponda a los primeros 10 dígitos del DVR
-        //String extractedOrg = SipCreator.getOrgIdFromSip(dvrSipId);
-        //if (extractedOrg == null || !extractedOrg.equals(orgUlid)) {
-        //    throw new UnauthorizedException("No tienes permiso sobre este DVR");
-        //}
-        */
-
+        String extractedOrg = SipCreator.getOrgIdFromSip(dvrSipId);
+        if (extractedOrg == null || !extractedOrg.equals(orgUlid)) {
+            throw new UnauthorizedException("No tienes permiso sobre este DVR");
+        }
         String dvrAddress = redisDvrService.getDvrAddress(dvrSipId);
         if (dvrAddress == null){
             throw new BadRequestException("El DVR no se encuentra online");
         }
 
+        if (channelSipId == null || channelSipId.isEmpty()) {
+            throw new BadRequestException("El id de el canal no puede ser nulo ni estar vacío.");
+        }   
+
         String[] parts = dvrAddress.split(":");
         String ip = parts[0];
         int port = Integer.parseInt(parts[1]);
 
-        // Si no mandan canal, asumimos que es el SIP del DVR base
-        String targetChannel = (channelSipId != null && !channelSipId.isEmpty()) ? channelSipId : dvrSipId;
-
-        // 4. Mandar pedir los links al Repo de ZLM
-        return zlmVideoRepo.getPlaybackLinks(targetChannel, ip, port, quality);
+        return zlmVideoRepo.getPlaybackLinks(channelSipId, ip, port, quality);
     }
 
 
@@ -180,7 +181,6 @@ public class DvrServImp implements DvrServ {
             result.add(info);
         }
         
-        // Opcional: Agregar los que están en Postgres pero NO están online (Para que sepas que existen pero están caídos)
         for (Dvr dvr : dvrsRegistrados) {
             if (!sipIdsOnline.contains(dvr.getSipId())) {
                 Map<String, Object> info = new HashMap<>();

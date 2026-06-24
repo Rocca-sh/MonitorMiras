@@ -48,6 +48,7 @@ public class DvrController {
 
     @GetMapping(value = "/play/{sipId}")
     public ResponseEntity<?> viewStream(@PathVariable String sipId, @RequestParam(required = true) String channelId, @RequestParam(defaultValue = "0") int quality, @AuthenticationPrincipal UserPrincipal principal) {
+        quality = 1;
         Map<String, String> links = dvrServ.playVideo(sipId, channelId, principal.getOrgId(), quality);
         return ResponseEntity.ok(links);
     }

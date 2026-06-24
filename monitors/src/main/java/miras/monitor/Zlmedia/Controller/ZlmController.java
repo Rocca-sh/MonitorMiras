@@ -41,6 +41,7 @@ public class ZlmController implements SipListener {
     public static final Map<String, javax.sip.Dialog> activeDialogs = new ConcurrentHashMap<>();
     public static final Map<String, Boolean> pendingStreams = new ConcurrentHashMap<>();
     public static final java.util.Set<String> stoppedStreams = ConcurrentHashMap.newKeySet();
+    public static final java.util.Set<String> recoveredStreams = ConcurrentHashMap.newKeySet();
     public static final Map<String, CompletableFuture<Void>> pendingFutures = new ConcurrentHashMap<>();
 
     @Autowired
@@ -139,7 +140,7 @@ public class ZlmController implements SipListener {
                 } 
                 else if (xmlString.contains("<CmdType>Catalog</CmdType>")) {
                     System.out.println("====== CATÁLOGO RECIBIDO DEL DVR " + sipId + " ======");
-                    // System.out.println(xmlString); // Imprimir el XML crudo para depurar
+                    System.out.println(xmlString); // Imprimir el XML crudo para depurar
                     try {
                         List<Map<String, String>> channels = new ArrayList<>();
                         Pattern itemPattern = Pattern.compile("<Item>(.*?)</Item>", Pattern.DOTALL);
@@ -164,7 +165,8 @@ public class ZlmController implements SipListener {
                                 if (deviceId.length() < 20 && sipId.length() == 20) {
                                     try {
                                         String base = sipId.substring(0, 10);
-                                        deviceId = base + "131" + "0" + String.format("%06d", Integer.parseInt(deviceId) + 1);
+                                        // Usamos 132 (Video Input Channel) en vez de 131 (IPC) porque es un DVR
+                                        deviceId = base + "132" + "0" + String.format("%06d", Integer.parseInt(deviceId));
                                         System.out.println("ID reconstruido: " + deviceId);
                                     } catch (NumberFormatException e) {
                                         // Ignore parsing error, keep original ID

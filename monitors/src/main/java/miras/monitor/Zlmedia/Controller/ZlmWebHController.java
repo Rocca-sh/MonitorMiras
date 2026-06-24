@@ -33,6 +33,7 @@ public class ZlmWebHController {
 
         // Buscar si tenemos la conexión (Dialog) viva hacia esta cámara
         Dialog dialog = ZlmController.activeDialogs.remove(streamId);
+        ZlmController.recoveredStreams.remove(streamId);
 
         if (dialog != null) {
             try {
