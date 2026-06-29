@@ -67,4 +67,16 @@ public class RedisDvrService {
     public void setDvrOffline(String sipId) {
         redisTemplate.delete("dvr:" + sipId);
     }
+
+    public String saveLocation(String sipId, double latitude, double longitude, double speed) {
+        String key = "dvr_gps:" + sipId;
+        String jsonLocation = String.format("{\"lat\":%f, \"lon\":%f, \"speed\":%f, \"timestamp\":%d}", latitude, longitude, speed, System.currentTimeMillis());
+        // Guardar la ubicacion por 5 minutos
+        redisTemplate.opsForValue().set(key, jsonLocation, 5, TimeUnit.MINUTES);
+        return jsonLocation;
+    }
+
+    public String getLocation(String sipId) {
+        return redisTemplate.opsForValue().get("dvr_gps:" + sipId);
+    }
 }

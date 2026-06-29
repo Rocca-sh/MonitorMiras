@@ -2,21 +2,11 @@ package miras.monitor.Zlmedia.Model;
 
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlProperty;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlRootElement;
-import lombok.Data;
 
-@Data
 @JacksonXmlRootElement(localName = "Response")
-public class CatalogResponse {
-
-    @JacksonXmlProperty(localName = "CmdType")
-    private String cmdType;
-
-    @JacksonXmlProperty(localName = "SN")
-    private String sn;
-
-    @JacksonXmlProperty(localName = "DeviceID")
-    private String deviceId;
-
-    @JacksonXmlProperty(localName = "SumNum")
-    private Integer sumNum;
-}
+public record CatalogResponse(
+    @JacksonXmlProperty(localName = "CmdType") String cmdType,
+    @JacksonXmlProperty(localName = "SN") String sn,
+    @JacksonXmlProperty(localName = "DeviceID") String deviceId,
+    @JacksonXmlProperty(localName = "SumNum") Integer sumNum
+) {}

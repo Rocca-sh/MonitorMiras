@@ -72,6 +72,22 @@ public class SseDvrController {
         }
     }
 
+    public void notifyGpsUpdate(String orgId, String sipId, String jsonLocation) {
+        List<SseEmitter> orgClients = emitters.get(orgId);
+
+        if (orgClients != null) {
+            String payload = String.format("{\"sipId\":\"%s\", \"location\":%s}", sipId, jsonLocation);
+            for (SseEmitter client : orgClients) {
+                try {
+                    client.send(SseEmitter.event().name("gps-update").data(payload));
+                } catch (IOException e) {
+                    client.completeWithError(e);
+                    removeEmitter(orgId, client);
+                }
+            }
+        }
+    }
+
     private void removeEmitter(String orgId, SseEmitter emitter) {
         List<SseEmitter> list = emitters.get(orgId);
         if (list != null) {

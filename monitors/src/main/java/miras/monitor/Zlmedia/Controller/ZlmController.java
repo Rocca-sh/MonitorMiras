@@ -40,8 +40,6 @@ import java.util.concurrent.CompletableFuture;
 public class ZlmController implements SipListener {
 
     public static final Map<String, javax.sip.Dialog> activeDialogs = new ConcurrentHashMap<>();
-    public static final Map<String, Boolean> pendingStreams = new ConcurrentHashMap<>();
-    public static final java.util.Set<String> stoppedStreams = ConcurrentHashMap.newKeySet();
     public static final java.util.Set<String> recoveredStreams = ConcurrentHashMap.newKeySet();
     public static final Map<String, CompletableFuture<Void>> pendingFutures = new ConcurrentHashMap<>();
 
@@ -89,18 +87,11 @@ public class ZlmController implements SipListener {
             SipURI sipUri = (SipURI) fromHeader.getAddress().getURI();
             String sipId = sipUri.getUser();
             
-            // 2. Extraer IP y Puerto REAL del DVR (Mejor que Contact por el NAT)
+            // 2. Extraer IP y Puerto REAL del DVR
             ViaHeader viaHeader = (ViaHeader) request.getHeader(ViaHeader.NAME);
-            if (viaHeader != null) {
-                String dvrIp = viaHeader.getReceived();
-                if (dvrIp == null || dvrIp.equals("0.0.0.0")) {
-                    dvrIp = viaHeader.getHost();
-                }
-                
-                int dvrPort = viaHeader.getRPort();
-                if (dvrPort <= 0) dvrPort = viaHeader.getPort();
-                if (dvrPort <= 0) dvrPort = 5060;
-                
+            DvrAddress address = getRealAddress(viaHeader);
+            
+            if (address != null) {
                 // 3. Evaluar si ya esta en redis
                 if (redisDvrService.getDvrAddress(sipId) != null) {
                     System.out.println("====== DVR " + sipId + " envio REGISTER, ya conectado ======");
@@ -109,8 +100,8 @@ public class ZlmController implements SipListener {
                 }
 
                 // Guardar en Redis con numero de canales por defecto (1) hasta que recibamos el Catalog
-                redisDvrService.registerDvr(sipId, dvrIp, dvrPort, 1);
-                System.out.println("====== DVR " + sipId + " CONECTADO (" + dvrIp + ":" + dvrPort + ") ======");
+                redisDvrService.registerDvr(sipId, address.ip, address.port, 1);
+                System.out.println("====== DVR " + sipId + " CONECTADO (" + address.ip + ":" + address.port + ") ======");
             }
 
             // 4. Enviar la respuesta 200 OK
@@ -159,17 +150,11 @@ public class ZlmController implements SipListener {
                 if (xmlString.contains("<CmdType>Keepalive</CmdType>")) {
                     // Extraer IP y Puerto REAL del DVR para asegurar que se registre incluso si Redis se borro
                     ViaHeader viaHeader = (ViaHeader) request.getHeader(ViaHeader.NAME);
-                    if (viaHeader != null) {
-                        String dvrIp = viaHeader.getReceived();
-                        if (dvrIp == null || dvrIp.equals("0.0.0.0")) dvrIp = viaHeader.getHost();
-                        
-                        int dvrPort = viaHeader.getRPort();
-                        if (dvrPort <= 0) dvrPort = viaHeader.getPort();
-                        if (dvrPort <= 0) dvrPort = 5060;
-                        
+                    DvrAddress address = getRealAddress(viaHeader);
+                    if (address != null) {
                         // Si la llave no existe (ej. reinicio), registerDvr la crea y avisa al Frontend. 
                         // Por defecto asumimos 1 canal, hasta poder procesar el Catalog
-                        redisDvrService.registerDvr(sipId, dvrIp, dvrPort, 1);
+                        redisDvrService.registerDvr(sipId, address.ip, address.port, 1);
                     }
                 } 
                 else if (xmlString.contains("<CmdType>Catalog</CmdType>")) {
@@ -254,35 +239,14 @@ public class ZlmController implements SipListener {
                         Request ackRequest = dialog.createAck(cseq.getSeqNumber());
                         dialog.sendAck(ackRequest);
                         System.out.println("===== ACK ENVIADO AL DVR =====");
+                        activeDialogs.put(channelSipId, dialog);
                         
-                        pendingStreams.remove(channelSipId);
-                        
-                        if (stoppedStreams.contains(channelSipId)) {
-                            stoppedStreams.remove(channelSipId);
-                            
-                            SipProvider provider = (SipProvider) responseEvent.getSource();
-                            Request byeRequest = dialog.createRequest(Request.BYE);
-                            javax.sip.ClientTransaction ct = provider.getNewClientTransaction(byeRequest);
-                            dialog.sendRequest(ct);
-                            System.out.println("===== BYE ENVIADO INMEDIATAMENTE AL DVR (Cancelacion Rapida) =====");
-                            
-                            CompletableFuture<Void> cancelledFuture = pendingFutures.remove(channelSipId);
-                            if (cancelledFuture != null) {
-                                cancelledFuture.completeExceptionally(
-                                    new IllegalStateException("Stream cancelado antes de confirmar (" + channelSipId + ")"));
-                            }
-                        } else {
-                            activeDialogs.put(channelSipId, dialog);
-                            
-                            CompletableFuture<Void> future = pendingFutures.remove(channelSipId);
-                            if (future != null) {
-                                future.complete(null);
-                            }
+                        CompletableFuture<Void> future = pendingFutures.remove(channelSipId);
+                        if (future != null) {
+                            future.complete(null);
                         }
                     }
                 } else if (response.getStatusCode() > 200) {
-                    System.err.println("===== EL DVR RECHAZO EL INVITE PARA " + channelSipId + " CON CODIGO: " + response.getStatusCode() + " =====");
-                    pendingStreams.remove(channelSipId);
                     CompletableFuture<Void> future = pendingFutures.remove(channelSipId);
                     if (future != null) {
                         if (response.getStatusCode() == 486) {
@@ -309,4 +273,23 @@ public class ZlmController implements SipListener {
 
     @Override
     public void processDialogTerminated(DialogTerminatedEvent dialogTerminatedEvent) {}
+
+    private static class DvrAddress {
+        String ip;
+        int port;
+        DvrAddress(String ip, int port) { 
+            this.ip = ip; 
+            this.port = port; 
+        }
+    }
+
+    private DvrAddress getRealAddress(ViaHeader viaHeader) {
+        if (viaHeader == null) return null;
+        String ip = viaHeader.getReceived();
+        if (ip == null || ip.equals("0.0.0.0")) ip = viaHeader.getHost();
+        int port = viaHeader.getRPort();
+        if (port <= 0) port = viaHeader.getPort();
+        if (port <= 0) port = 5060;
+        return new DvrAddress(ip, port);
+    }
 }

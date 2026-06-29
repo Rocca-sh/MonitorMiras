@@ -107,6 +107,13 @@
 			<groupId>com.fasterxml.jackson.dataformat</groupId>
 			<artifactId>jackson-dataformat-xml</artifactId>
 		</dependency>
+
+		<!-- JT808 Server Framework -->
+		<dependency>
+			<groupId>io.github.hylexus.jt</groupId>
+			<artifactId>jt-808-server-spring-boot-starter</artifactId>
+			<version>3.0.0-rc.2</version>
+		</dependency>
 	</dependencies>
 
 	<build>

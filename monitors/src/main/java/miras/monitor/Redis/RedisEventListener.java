@@ -31,6 +31,20 @@ public class RedisEventListener implements MessageListener {
         
             Set<String> onlineDvrs = redisDvrService.getOnlineDvrsByOrg(orgId);
             sseDvrController.notifyClients(orgId, onlineDvrs);
+        } else if (redisKey.startsWith("dvr_gps:")) {
+            // El evento SET solo envia la llave, asi que consultamos Redis para obtener el JSON completo
+            if (eventType.endsWith("set")) {
+                String sipId = redisKey.substring(8);
+                try {
+                    String jsonLocation = redisDvrService.getLocation(sipId);
+                    if (jsonLocation != null) {
+                        String orgId = redisDvrService.getOrgIdBySipId(sipId);
+                        sseDvrController.notifyGpsUpdate(orgId, sipId, jsonLocation);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error procesando actualizacion GPS en SSE: {}");
+                }
+            }
         }
     }
 }

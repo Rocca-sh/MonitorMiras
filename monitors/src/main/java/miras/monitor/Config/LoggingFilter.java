@@ -18,7 +18,7 @@ public class LoggingFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
         
         // Evitamos loggear las rutas de SSE porque el body es un stream continuo y puede causar problemas
-        if (request.getRequestURI().contains("/sse/stream")) {
+        if (request.getRequestURI().contains("sse/stream")) {
             filterChain.doFilter(request, response);
             return;
         }
