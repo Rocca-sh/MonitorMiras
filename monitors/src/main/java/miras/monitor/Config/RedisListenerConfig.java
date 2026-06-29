@@ -18,7 +18,7 @@ public class RedisListenerConfig {
         RedisMessageListenerContainer container = new RedisMessageListenerContainer();
         container.setConnectionFactory(redisConnectionFactory);
 
-        // Escuchamos todos los eventos que ocurren en la DB 1 (donde están dvr:*)
+        // Escuchamos todos los eventos que ocurren en la DB 1 (donde estan dvr:*)
         container.addMessageListener(listener, new PatternTopic("__keyevent@1__:*"));
         
         return container;

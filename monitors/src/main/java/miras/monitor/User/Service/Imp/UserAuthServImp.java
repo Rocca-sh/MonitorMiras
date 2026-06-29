@@ -44,7 +44,7 @@ public class UserAuthServImp implements UserAuthServ {
                     .orElseThrow(() -> new NotFoundException("El ID de la empresa no existe"));
             
             if (!passwordEncoder.matches(user.getOrganization().getPasswd(), org.getPasswd())) {
-                throw new UnauthorizedException("Contraseña de la empresa incorrecta");
+                throw new UnauthorizedException("Contrasena de la empresa incorrecta");
             }
             user.setRole("OWNER");
         } else {
@@ -61,7 +61,7 @@ public class UserAuthServImp implements UserAuthServ {
         User user = getUserByEmail(email);
         
         if (!passwordEncoder.matches(psswd, user.getPasswd())) {
-            throw new UnauthorizedException("Email o contraseña invalidos");
+            throw new UnauthorizedException("Email o contrasena invalidos");
         }
         
         return user;
@@ -85,7 +85,7 @@ public class UserAuthServImp implements UserAuthServ {
         }
         
         if (!passwordEncoder.matches(linkData.getOrganization().getPasswd(), org.getPasswd())) {
-            throw new UnauthorizedException("Contraseña de empresa incorrecta");
+            throw new UnauthorizedException("Contrasena de empresa incorrecta");
         }
         
         if ("MEMBER".equalsIgnoreCase(role)) {

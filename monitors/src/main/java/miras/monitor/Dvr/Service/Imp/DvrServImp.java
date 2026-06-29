@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import miras.monitor.Utils.RedisDvrService;
 
 import miras.monitor.Exceptions.BadRequest.BadRequestException;
-import miras.monitor.Zlmedia.Repo.ZlmVideoRepo;
+import miras.monitor.Zlmedia.Service.ZlmVideoServ;
 import miras.monitor.lib.SipCreator;
 
 
@@ -37,15 +37,15 @@ public class DvrServImp implements DvrServ {
     private final UserPg userPg;
     private final RedisDvrService redisDvrService;
 
-    private final ZlmVideoRepo zlmVideoRepo;
+    @Autowired
+    private ZlmVideoServ zlmVideoServ;
 
     @Autowired
-    public DvrServImp(DvrPg dvrPg, OrgPg orgPg, UserPg userPg, RedisDvrService redisDvrService, ZlmVideoRepo zlmVideoRepo) {
+    public DvrServImp(DvrPg dvrPg, OrgPg orgPg, UserPg userPg, RedisDvrService redisDvrService) {
         this.dvrPg = dvrPg;
         this.orgPg = orgPg;
         this.userPg = userPg;
         this.redisDvrService = redisDvrService;
-        this.zlmVideoRepo = zlmVideoRepo;
     }
 
     private Org getOrg(String orgUlid) {
@@ -111,7 +111,7 @@ public class DvrServImp implements DvrServ {
 
         String dvrAddress = redisDvrService.getDvrAddress(sipId);
         String[] parts = dvrAddress.split(":");
-        return zlmVideoRepo.getCatalogWithTimeout(sipId, parts[0], Integer.parseInt(parts[1]));
+        return zlmVideoServ.getCatalogWithTimeout(sipId, parts[0], Integer.parseInt(parts[1]));
     }
 
     @Override
@@ -126,14 +126,14 @@ public class DvrServImp implements DvrServ {
         }
 
         if (channelSipId == null || channelSipId.isEmpty()) {
-            throw new BadRequestException("El id de el canal no puede ser nulo ni estar vacío.");
+            throw new BadRequestException("El id de el canal no puede ser nulo ni estar vacio.");
         }   
 
         String[] parts = dvrAddress.split(":");
         String ip = parts[0];
         int port = Integer.parseInt(parts[1]);
 
-        return zlmVideoRepo.getPlaybackLinks(channelSipId, ip, port, quality);
+        return zlmVideoServ.getPlaybackLinks(channelSipId, ip, port, quality);
     }
 
 
@@ -143,7 +143,7 @@ public class DvrServImp implements DvrServ {
         if (channelSipId == null || channelSipId.isEmpty()) {
             throw new BadRequestException("El channelSipId es obligatorio");
         }
-        zlmVideoRepo.stopStream(channelSipId);
+        zlmVideoServ.stopStream(channelSipId);
     }
 
     @Override
@@ -158,7 +158,7 @@ public class DvrServImp implements DvrServ {
         
         List<Map<String, Object>> result = new ArrayList<>();
         
-        // Agregar todos los que están online (Tengan nombre o no)
+        // Agregar todos los que estan online (Tengan nombre o no)
         for (String sipId : sipIdsOnline) {
             String addressInfo = redisDvrService.getDvrAddress(sipId);
             String[] parts = addressInfo != null ? addressInfo.split(":") : new String[]{"", "", "1"};
@@ -197,5 +197,56 @@ public class DvrServImp implements DvrServ {
         }
         
         return result;
+    }
+    @Override
+    public void cleanAndRebootDvr(String sipId, String orgUlid) {
+        String cachedOrgId = redisDvrService.getOrgIdBySipId(sipId);
+        
+        if (!cachedOrgId.equals(orgUlid)) {
+            throw new UnauthorizedException("No tienes permiso sobre este DVR");
+        }
+
+        String dvrAddress = redisDvrService.getDvrAddress(sipId);
+        if (dvrAddress == null) {
+            throw new BadRequestException("El DVR no se encuentra conectado");
+        }
+
+        // Send BYE y cerrar puertos RTP en ZLM incluso si son streams fantasma
+        String dvrBase = sipId.substring(0, 10);
+        for (int i = 0; i < 32; i++) {
+            String channelSipId = dvrBase + "131" + String.format("%07d", i);
+            zlmVideoServ.closeStream(channelSipId, "CLEAN_REBOOT");
+        }
+
+        // Reboot the DVR
+        String[] parts = dvrAddress.split(":");
+        zlmVideoServ.rebootDvr(sipId, parts[0], Integer.parseInt(parts[1]));
+
+        // Remove from redis
+        redisDvrService.deleteDvr(sipId);
+    }
+
+    @Override
+    public void cleanDvr(String sipId, String orgUlid) {
+        String cachedOrgId = redisDvrService.getOrgIdBySipId(sipId);
+        
+        if (!cachedOrgId.equals(orgUlid)) {
+            throw new UnauthorizedException("No tienes permiso sobre este DVR");
+        }
+
+        String dvrAddress = redisDvrService.getDvrAddress(sipId);
+        if (dvrAddress == null) {
+            throw new BadRequestException("El DVR no se encuentra conectado");
+        }
+
+        // Send BYE y cerrar puertos RTP en ZLM incluso si son streams fantasma
+        String dvrBase = sipId.substring(0, 10);
+        for (int i = 0; i < 32; i++) {
+            String channelSipId = dvrBase + "131" + String.format("%07d", i);
+            zlmVideoServ.closeStream(channelSipId, "CLEAN_MANUAL");
+        }
+
+        // Remove from redis without rebooting
+        redisDvrService.deleteDvr(sipId);
     }
 }

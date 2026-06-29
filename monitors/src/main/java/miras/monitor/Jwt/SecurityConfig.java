@@ -35,12 +35,12 @@ public class SecurityConfig {
             // Deshabilitamos CSRF porque usaremos JWT (Stateless)
             .csrf(AbstractHttpConfigurer::disable)
             
-            // Reglas de autorización
+            // Reglas de autorizacion
             .authorizeHttpRequests(auth -> auth
-                // Rutas públicas (Auth, Org y Webhooks)
+                // Rutas publicas (Auth, Org y Webhooks)
                 .requestMatchers("/auth/**", "/api/webhook/**", "/api/hook/**", "/org/**").permitAll()
                 
-                // Rutas protegidas que requieren roles específicos
+                // Rutas protegidas que requieren roles especificos
                 .requestMatchers("/api/dvr/view/**").hasAnyRole("MEMBER", "VIEWER", "OWNER", "ADMIN")
                 .requestMatchers("/api/dvr/**").hasAnyRole("MEMBER", "OWNER", "ADMIN")
                 .requestMatchers("/api/**").hasAnyRole("MEMBER", "VIEWER", "OWNER", "ADMIN")
@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .anyRequest().authenticated()
             )
             
-            // Política sin estado (Stateless) para que Spring no cree sesiones en memoria
+            // Politica sin estado (Stateless) para que Spring no cree sesiones en memoria
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )

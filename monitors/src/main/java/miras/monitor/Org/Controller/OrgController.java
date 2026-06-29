@@ -52,10 +52,10 @@ public class OrgController {
         // Valida que la org exista
         Org org = orgServ.getOrgBySipId(dto.getSipIdOrg());
 
-        // Genera el código en Redis
+        // Genera el codigo en Redis
         String code = redisService.genCode(org.getEmail());
 
-        // Envía por email
+        // Envia por email
         if (emailServ != null) {
             emailServ.sendCode(org.getEmail(), code);
         }

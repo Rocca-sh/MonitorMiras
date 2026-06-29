@@ -59,6 +59,18 @@ public class DvrController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/clean/reboot/{sipId}")
+    public ResponseEntity<?> restartDvr(@PathVariable String sipId, @AuthenticationPrincipal UserPrincipal principal) {
+        dvrServ.cleanAndRebootDvr(sipId, principal.getOrgId());
+        return ResponseEntity.ok(Map.of("message", "Comando de reinicio fisico enviado al DVR y registros limpiados"));
+    }
+
+    @PostMapping("/clean/{sipId}")
+    public ResponseEntity<?> cleanDvr(@PathVariable String sipId, @AuthenticationPrincipal UserPrincipal principal) {
+        dvrServ.cleanDvr(sipId, principal.getOrgId());
+        return ResponseEntity.ok(Map.of("message", "Registros limpiados exitosamente. El DVR volvera a conectarse en el proximo latido."));
+    }
+
     @GetMapping("/list")
     public ResponseEntity<?> listDevices(@AuthenticationPrincipal UserPrincipal principal) {
         return ResponseEntity.ok(dvrServ.listDevices(principal.getOrgId()));

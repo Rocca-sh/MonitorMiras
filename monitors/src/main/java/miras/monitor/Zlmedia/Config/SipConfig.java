@@ -24,14 +24,14 @@ public class SipConfig {
     @PostConstruct
     public void init() {
         try {
-            // 1. Obtener la fábrica de SIP
+            // 1. Obtener la fabrica de SIP
             SipFactory sipFactory = SipFactory.getInstance();
-            sipFactory.setPathName("gov.nist"); // Usamos la implementación estándar (Reference Implementation)
+            sipFactory.setPathName("gov.nist"); // Usamos la implementacion estandar (Reference Implementation)
 
             // Configurar propiedades del Stack SIP
             Properties properties = new Properties();
             properties.setProperty("javax.sip.STACK_NAME", "MirasSipServer");
-            // Nivel de Logs internos de la librería (32 es máximo debug, 0 es apagado)
+            // Nivel de Logs internos de la libreria (32 es maximo debug, 0 es apagado)
             properties.setProperty("gov.nist.javax.sip.TRACE_LEVEL", "0"); 
             properties.setProperty("gov.nist.javax.sip.SERVER_LOG", "sip_server_log.txt");
             properties.setProperty("gov.nist.javax.sip.DEBUG_LOG", "sip_debug_log.txt");
@@ -58,7 +58,7 @@ public class SipConfig {
             System.out.println("==================================================");
 
         } catch (Exception e) {
-            System.err.println("¡Error crítico al intentar iniciar el servidor SIP!");
+            System.err.println("¡Error critico al intentar iniciar el servidor SIP!");
             e.printStackTrace();
         }
     }

@@ -64,7 +64,7 @@ public class UserAuthController {
         // Generar codigo en el servicio Redis
         String code = redisService.genCode(user.getEmail());
         
-        // Enviar usando EmailServ si existe una implementación
+        // Enviar usando EmailServ si existe una implementacion
         if (emailServ != null) {
             emailServ.sendCode(user.getEmail(), code);
         }

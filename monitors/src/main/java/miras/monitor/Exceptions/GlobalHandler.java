@@ -11,9 +11,11 @@ import miras.monitor.Exceptions.NotFound.NotFoundException;
 import miras.monitor.Exceptions.UnAuthorized.UnauthorizedException;
 import miras.monitor.Exceptions.Conflict.ConflictException;
 import miras.monitor.Exceptions.Conflict.DvrRejectedException;
+import miras.monitor.Exceptions.Conflict.DvrBusyException;
 import miras.monitor.Exceptions.Exist.ExistException;
 import miras.monitor.Exceptions.Forbidden.ForbiddenException;
 import miras.monitor.Exceptions.Timeout.DvrTimeoutException;
+import miras.monitor.Exceptions.InternalServer.InternalServerException;
 
 @RestControllerAdvice
 public class GlobalHandler {
@@ -104,7 +106,7 @@ public class GlobalHandler {
         );
 
         return ResponseEntity
-                .status(HttpStatus.UNAUTHORIZED) // Antes decía CONFLICT por error
+                .status(HttpStatus.UNAUTHORIZED) // Antes decia CONFLICT por error
                 .body(error);
         }
 
@@ -123,6 +125,21 @@ public class GlobalHandler {
                 .body(error);
         }
 
+    @ExceptionHandler(DvrBusyException.class)
+    public ResponseEntity<ErrorResponse> handleDvrBusy(
+            DvrBusyException ex) {
+
+        ErrorResponse error = new ErrorResponse(
+                500,
+                "DVR_BUSY",
+                "El DVR recibio demasiadas solicitudes espera unos segundos y vuelve a intentarlo"
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(error);
+    }
+
     @ExceptionHandler(DvrTimeoutException.class)
     public ResponseEntity<ErrorResponse> handleDvrTimeout(
             DvrTimeoutException ex) {
@@ -135,6 +152,20 @@ public class GlobalHandler {
 
         return ResponseEntity
                 .status(HttpStatus.GATEWAY_TIMEOUT)
+                .body(error);
+    }
+    @ExceptionHandler(InternalServerException.class)
+    public ResponseEntity<ErrorResponse> handleInternalServerError(
+            InternalServerException ex) {
+
+        ErrorResponse error = new ErrorResponse(
+                500,
+                "INTERNAL_SERVER_ERROR",
+                ex.getMessage()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(error);
     }
 }

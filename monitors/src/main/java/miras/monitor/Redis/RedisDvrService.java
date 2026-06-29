@@ -37,7 +37,7 @@ public class RedisDvrService {
 
     public String getOrgIdBySipId(String sipId) {
         if (sipId == null || sipId.length() < 10) {
-            throw new NotFoundException("El SIP ID es inválido");
+            throw new NotFoundException("El SIP ID es invalido");
         }
         return sipId.substring(0, 10);
     }
@@ -57,6 +57,11 @@ public class RedisDvrService {
 
     public void deleteChannels(String sipId) {
         redisTemplate.delete("dvr_channels:" + sipId);
+    }
+
+    public void deleteDvr(String sipId) {
+        redisTemplate.delete("dvr:" + sipId);
+        deleteChannels(sipId);
     }
 
     public void setDvrOffline(String sipId) {
